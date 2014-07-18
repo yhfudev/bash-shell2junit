@@ -21,7 +21,8 @@
 ###     - Configure Jenkins to parse junit files from the generated folder
 ###
 
-asserts=00; errors=0; total=0; content=""
+testcases=0
+asserts=00; errors=0; failures=0; total=0; content=""
 date=`which gdate || which date`
 
 # create output folder
@@ -47,7 +48,8 @@ juLogClean() {
 
 # Execute a command and record its results 
 juLog() {
-  
+  testcases=$(( $testcases + 1 ))
+
   # parse arguments
   ya=""; icase=""
   while [ -z "$ya" ]; do  
@@ -55,6 +57,8 @@ juLog() {
   	  -name=*)   name=$asserts-`echo "$1" | sed -e 's/-name=//'`;   shift;;
       -ierror=*) ereg=`echo "$1" | sed -e 's/-ierror=//'`; icase="-i"; shift;;
       -error=*)  ereg=`echo "$1" | sed -e 's/-error=//'`;  shift;;
+      -ifailure=*) freg=`echo "$1" | sed -e 's/-ifailure=//'`; icase="-i"; shift;;
+      -failure=*)  freg=`echo "$1" | sed -e 's/-failure=//'`;  shift;;
       *)         ya=1;;
     esac
   done  
@@ -92,13 +96,19 @@ juLog() {
   echo "+++ exit code: $evErr"        | tee -a $outf
 
   # set the appropriate error, based in the exit code and the regex
-  [ $evErr != 0 ] && err=1 || err=0
+  err=0
+  [ $evErr != 0 ] && fail=1 || fail=0
   out=`cat $outf | sed -e 's/^\([^+]\)/| \1/g'`
   if [ $err = 0 -a -n "$ereg" ]; then
       H=`echo "$out" | egrep $icase "$ereg"`
       [ -n "$H" ] && err=1
   fi
   echo "+++ error: $err"         | tee -a $outf
+  if [ $fail = 0 -a -n "$freg" ]; then
+      H=`echo "$out" | egrep $icase "$freg"`
+      [ -n "$H" ] && fail=1
+  fi
+  echo "+++ failure: $fail"         | tee -a $outf
   rm -f $outf
 
   errMsg=`cat $errf`
@@ -107,18 +117,24 @@ juLog() {
   asserts=`expr $asserts + 1`
   asserts=`printf "%.2d" $asserts`
   errors=`expr $errors + $err`
+  failures=`expr $failures + $fail`
   time=`echo "$end - $ini" | bc -l`
   total=`echo "$total + $time" | bc -l`
 
   # write the junit xml report
+  ## error tag
+  [ $err = 0 ] && error="" || error="
+      <error type=\"ScriptError\" message=\"Script Error\"><![CDATA[$errMsg]]></error>
+  "
   ## failure tag
-  [ $err = 0 ] && failure="" || failure="
-      <failure type=\"ScriptError\" message=\"Script Error\"><![CDATA[$errMsg]]></failure>
+  [ $fail = 0 ] && failure="" || failure="
+      <failure type=\"ScriptError\" message=\"Script Fail\"><![CDATA[$errMsg]]></failure>
   "
   ## testcase tag
   content="$content
     <testcase assertions=\"1\" name=\"$name\" time=\"$time\">
     $failure
+    $error
     <system-out>
 <![CDATA[
 $out
@@ -133,9 +149,13 @@ $errMsg
   "
   ## testsuite block
   cat <<EOF > "$juDIR/TEST-$suite.xml"
-  <testsuite failures="0" assertions="$assertions" name="$suite" tests="1" errors="$errors" time="$total">
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="xunit2html.xslt" encoding="UTF-8"?>
+<testsuites>
+  <testsuite failures="$failures" assertions="$assertions" name="$suite" tests="$testcases" errors="$errors" time="$total">
     $content
   </testsuite>
+<testsuites>
 EOF
 
 }
