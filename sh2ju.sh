@@ -150,7 +150,7 @@ $errMsg
   ## testsuite block
   cat <<EOF > "$juDIR/TEST-$suite.xml"
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-stylesheet type="text/xsl" href="xunit2html.xslt" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="junit2html.xslt" encoding="UTF-8"?>
 <testsuites>
   <testsuite failures="$failures" assertions="$assertions" name="$suite" tests="$testcases" errors="$errors" time="$total">
     $content
